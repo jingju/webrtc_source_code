@@ -1,0 +1,100 @@
+ons.gni
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/arm.gni")
+import("//build/config/chrome_build.gni")
+import("//build/config/chromecast_build.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+
+if (is_chrome_branded) {
+  _default_ffmpeg_branding = "Chrome"
+} else {
+  _default_ffmpeg_branding = "Chromium"
+}
+
+if (is_chromeos && is_chrome_branded) {
+  _default_ffmpeg_branding = "ChromeOS"
+}
+
+if (is_chromecast) {
+  if (is_android) {
+    _default_ffmpeg_branding = "Chrome"
+  } else {
+    # TODO(alokp): What audio codecs does Chromecast want here?  Sort
+    # out and add configs if necessary.  http://crbug.com/570754
+    _default_ffmpeg_branding = "ChromeOS"
+  }
+}
+
+declare_args() {
+  # Controls whether we build the Chromium or Google Chrome version of FFmpeg.
+  # The Google Chrome version contains additional codecs. Typical values are
+  # Chromium, Chrome, and ChromeOS.
+  ffmpeg_branding = _default_ffmpeg_branding
+
+  # Set true to build ffmpeg as a shared library. NOTE: this means we should
+  # always consult is_component_ffmpeg instead of is_component_build for
+  # ffmpeg targets. This helps linux chromium packagers that swap out our
+  # ffmpeg.so with their own. See discussion here
+  # https://groups.google.com/a/chromium.org/forum/#!msg/chromium-packagers/R5rcZXWxBEQ/B6k0zzmJbvcJ
+  is_component_ffmpeg = is_component_build
+
+  # Set to true to force the use of ffmpeg's stdatomic fallback code.
+  #
+  # Windows and GCC prior to 4.9 lack stdatomic.h.
+  #
+  # This is also useful for developers who use icecc, which relies upon
+  # clang's -frewrite-includes flag which is broken with #include_next
+  # directives as used in chromium's clang stdatomic.h.
+  # Some background: https://bugs.llvm.org/show_bug.cgi?id=26828
+  ffmpeg_use_atomics_fallback = !is_clang
+}
+
+assert(ffmpeg_branding == "Chromium" ||
+       ffmpeg_branding == "Chrome" ||
+       ffmpeg_branding == "ChromeOS")
+
+if (current_cpu == "x86") {
+  ffmpeg_arch = "ia32"
+} else if (current_cpu == "arm" && arm_version >= 7 && arm_use_neon) {
+  ffmpeg_arch = "arm-neon"
+} else {
+  ffmpeg_arch = current_cpu
+}
+
+os_config = current_os
+if ((is_linux || is_chromeos) && is_msan) {
+  os_config = "linux-noasm"
+} else if (is_chromeos || is_fuchsia) {
+  os_config = "linux"
+} else if (is_win && !is_clang) {
+  os_config = "win-msvc"
+}
+
+
+
+
+
+/* #define FFMPEG_CONFIGURATION "--disable-everything --disable-all --disable-doc
+ --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-static
+ --enable-avcodec --enable-avformat --enable-avutil --enable-fft --enable-rdft --enable-static
+ --enable-libopus --disable-debug --disable-bzlib --disable-error-resilience --disable-iconv
+ --disable-lzo --disable-network --disable-schannel --disable-sdl2 --disable-symver --disable-xlib
+ --disable-zlib --disable-securetransport --disable-faan --disable-alsa --disable-autodetect
+ --enable-decoder='vorbis,libopus,flac' --enable-decoder='pcm_u8,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,mp3'
+ --enable-decoder='pcm_s16be,pcm_s24be,pcm_mulaw,pcm_alaw' --enable-demuxer='ogg,matroska,wav,flac,mp3,mov'
+  --enable-parser='opus,vorbis,flac,mpegaudio,vp9'
+  --extra-cflags=-I/mnt/src/chromium/src/third_party/opus/src/include
+  --disable-linux-perf --x86asmexe=nasm --enable-small
+  --enable-cross-compile
+  --sysroot=/mnt/src/chromium/src/third_party/android_ndk/platforms/android-21/arch-arm64
+  --extra-cflags=-I/mnt/src/chromium/src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include
+  --extra-cflags=-I/mnt/src/chromium/src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/aarch64-linux-android
+   --extra-cflags='--target=aarch64-linux-android' --extra-ldflags='--target=aarch64-linux-android' --extra-ldflags=-L/tmp/fakelinkerscripts
+   --extra-ldflags=-L/mnt/src/chromium/src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/aarch64-linux-android/
+    --extra-ldflags='--gcc-toolchain=/mnt/src/chromium/src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/'
+    --target-os=android --arch=aarch64 --enable-armv8 --extra-cflags='-march=armv8-a' --enable-pic
+     --cc=clang --cxx=clang++ --ld=clang --extra-ldflags='-fuse-ld=lld' --enable-demuxer=aac
+     --enable-parser=aac --enable-decoder=aac" -- elide long configuration string from binary */
